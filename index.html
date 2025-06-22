@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Controle Operacional por Agência</title>
+  <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/babel-standalone@6.26.0/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const App = () => {
+      const [formData, setFormData] = React.useState({
+        fornecedor: 'Enfok',
+        data: new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0],
+        turno: 'T1',
+        qtFixos: '',
+        qtDiaristas: '',
+        qtSuplentes: '',
+        qtFaltas: '',
+        qtAtestados: '',
+        colaboradores: [{ nome: '' }],
+      });
+
+      const handleInputChange = (e) => {
+        const { name, value } = e.target;
+        setFormData({ ...formData, [name]: value });
+      };
+
+      const handleColaboradorChange = (index, value) => {
+        const newColaboradores = [...formData.colaboradores];
+        newColaboradores[index].nome = value;
+        setFormData({ ...formData, colaboradores: newColaboradores });
+      };
+
+      const addColaborador = () => {
+        setFormData({
+          ...formData,
+          colaboradores: [...formData.colaboradores, { nome: '' }],
+        });
+      };
+
+      const removeColaborador = (index) => {
+        const newColaboradores = formData.colaboradores.filter((_, i) => i !== index);
+        setFormData({ ...formData, colaboradores: newColaboradores });
+      };
+
+      const calculateFixosDiaristas = () => {
+        return (
+          parseInt(formData.qtFixos || 0) +
+          parseInt(formData.qtDiaristas || 0) -
+          parseInt(formData.qtFaltas || 0) -
+          parseInt(formData.qtAtestados || 0)
+        );
+      };
+
+      const calculateTotalPresentes = () => {
+        return calculateFixosDiaristas() + parseInt(formData.qtSuplentes || 0);
+      };
+
+      const formatDateToBrazilian = (dateStr) => {
+        const [year, month, day] = dateStr.split("-");
+        return `${day}/${month}/${year}`;
+      };
+
+      const generateReport = () => {
+        const fixosDiaristas = calculateFixosDiaristas();
+        const totalPresentes = calculateTotalPresentes();
+        const nomesColaboradores = formData.colaboradores
+          .filter(col => col.nome.trim() !== '')
+          .map(col => `- ${col.nome}`)
+          .join('\n');
+
+        const report = `*Controle Operacional por Agência*\n\n` +
+          `*Fornecedor:* ${formData.fornecedor}\n` +
+          `*Data:* ${formatDateToBrazilian(formData.data)}\n` +
+          `*Turno:* ${formData.turno}\n\n` +
+          `*Qt. Fixos:* ${formData.qtFixos || 0}\n` +
+          `*Qt. Diaristas:* ${formData.qtDiaristas || 0}\n` +
+          `*Qt. Suplentes:* ${formData.qtSuplentes || 0}\n\n` +
+          `*Qt. Faltas:* ${formData.qtFaltas || 0}\n` +
+          `*Qt. Atestados:* ${formData.qtAtestados || 0}\n\n` +
+          `*Qt. Fixos + Diaristas (após faltas e atestados):* ${fixosDiaristas}\n` +
+          `*Total de Colaboradores Presentes:* ${totalPresentes}\n\n` +
+          `*Nomes dos Colaboradores:*\n${nomesColaboradores || 'Nenhum colaborador informado'}`;
+
+        const encodedReport = encodeURIComponent(report);
+        const whatsappLink = `https://api.whatsapp.com/send?text=${encodedReport}`;
+        window.open(whatsappLink, '_blank');
+      };
+
+      return (
+        <div className="min-h-screen bg-gray-100 flex flex-col items-center">
+          <header className="w-full bg-gradient-to-r from-indigo-600 to-indigo-800 p-6 flex justify-center">
+            <img
+              src="https://www.imile.com//images/logos/Christmas_logo_White.svg"
+              alt="Logo"
+              className="rounded-full w-24 h-24"
+            />
+          </header>
+          <div className="w-full max-w-lg p-6">
+            <h1 className="text-3xl font-bold text-gray-900 text-center mb-8">Controle Operacional por Agência</h1>
+            <div className="bg-white rounded-xl shadow-2xl p-8 space-y-6">
+              {/* Fornecedor dropdown */}
+              <select name="fornecedor" value={formData.fornecedor} onChange={handleInputChange} className="w-full border p-2 rounded">
+                <option value="Enfok">Enfok</option>
+                <option value="D0">D0</option>
+                <option value="ZAZ">ZAZ</option>
+                <option value="Polly">Polly</option>
+                <option value="Blitz">Blitz</option>
+              </select>
+
+              <input type="date" name="data" value={formData.data} onChange={handleInputChange} className="w-full border p-2 rounded"/>
+              <select name="turno" value={formData.turno} onChange={handleInputChange} className="w-full border p-2 rounded">
+                <option value="T1">T1</option>
+                <option value="T2">T2</option>
+                <option value="T3">T3</option>
+              </select>
+              <input name="qtFixos" value={formData.qtFixos} onChange={handleInputChange} placeholder="Qt. Fixos do quadro do turno" className="w-full border p-2 rounded" />
+              <input name="qtDiaristas" value={formData.qtDiaristas} onChange={handleInputChange} placeholder="Qt. Diaristas" className="w-full border p-2 rounded" />
+              <input name="qtSuplentes" value={formData.qtSuplentes} onChange={handleInputChange} placeholder="Qt. Suplentes que substitui Fixos com Falta/Atestado" className="w-full border p-2 rounded" />
+              <input name="qtFaltas" value={formData.qtFaltas} onChange={handleInputChange} placeholder="Qt. Faltas Fixos" className="w-full border p-2 rounded" />
+              <input name="qtAtestados" value={formData.qtAtestados} onChange={handleInputChange} placeholder="Qt. Atestados Fixos" className="w-full border p-2 rounded" />
+
+              <div>
+                <h2 className="text-xl font-semibold mb-2">Colaboradores</h2>
+                {formData.colaboradores.map((colaborador, index) => (
+                  <div key={index} className="flex mb-2 gap-2">
+                    <input
+                      value={colaborador.nome}
+                      onChange={(e) => handleColaboradorChange(index, e.target.value)}
+                      placeholder={`Colaborador ${index + 1}`}
+                      className="flex-1 border p-2 rounded"
+                    />
+                    <button
+                      onClick={() => removeColaborador(index)}
+                      className="text-red-600 font-bold"
+                    >
+                      X
+                    </button>
+                  </div>
+                ))}
+                <button
+                  onClick={addColaborador}
+                  className="mt-2 text-sm text-indigo-600 hover:underline"
+                >
+                  + Adicionar colaborador
+                </button>
+              </div>
+            </div>
+            <button
+              onClick={generateReport}
+              className="mt-8 w-full bg-indigo-600 text-white py-4 px-6 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-300 text-lg font-semibold transition-all duration-200"
+            >
+              Enviar Relatório para WhatsApp
+            </button>
+          </div>
+        </div>
+      );
+    };
+
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+<footer class="footer text-center text-gray-600 mt-8 mb-4">
+  © 2025 ERICLM. Todos os direitos reservados.
+</footer>
+</html>
