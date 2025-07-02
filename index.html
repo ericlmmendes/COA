@@ -28,7 +28,7 @@
         qtSuplentes: '',
         qtFaltas: '',
         qtAtestados: '',
-        colaboradores: [{ nome: '' }],
+        colaboradores: [{ nome: '', tipo: 'Operacional' }],
       });
 
       const handleInputChange = (e) => {
@@ -36,16 +36,16 @@
         setFormData({ ...formData, [name]: value });
       };
 
-      const handleColaboradorChange = (index, value) => {
+      const handleColaboradorChange = (index, field, value) => {
         const newColaboradores = [...formData.colaboradores];
-        newColaboradores[index].nome = value;
+        newColaboradores[index] = { ...newColaboradores[index], [field]: value };
         setFormData({ ...formData, colaboradores: newColaboradores });
       };
 
       const addColaborador = () => {
         setFormData({
           ...formData,
-          colaboradores: [...formData.colaboradores, { nome: '' }],
+          colaboradores: [...formData.colaboradores, { nome: '', tipo: 'Operacional' }],
         });
       };
 
@@ -76,8 +76,8 @@
         const fixosDiaristas = calculateFixosDiaristas();
         const totalPresentes = calculateTotalPresentes();
         const nomesColaboradores = formData.colaboradores
-          .filter(col => col.nome.trim() !== '')
-          .map(col => `- ${col.nome}`)
+          .filter(col => col.nome.trim() !== '') // Filtra colaboradores com nome vazio
+          .map(col => `- ${col.nome} (${col.tipo})`)
           .join('\n');
 
         const report = `*Controle Operacional por Agência*\n\n` +
@@ -110,7 +110,6 @@
           <div className="w-full max-w-lg p-6">
             <h1 className="text-3xl font-bold text-gray-900 text-center mb-8">Controle Operacional por Agência</h1>
             <div className="bg-white rounded-xl shadow-2xl p-8 space-y-6">
-              {/* Fornecedor dropdown */}
               <select name="fornecedor" value={formData.fornecedor} onChange={handleInputChange} className="w-full border p-2 rounded">
                 <option value="Enfok">Enfok</option>
                 <option value="D0">D0</option>
@@ -118,7 +117,6 @@
                 <option value="Polly">Polly</option>
                 <option value="Blitz">Blitz</option>
               </select>
-
               <input type="date" name="data" value={formData.data} onChange={handleInputChange} className="w-full border p-2 rounded"/>
               <select name="turno" value={formData.turno} onChange={handleInputChange} className="w-full border p-2 rounded">
                 <option value="T1">T1</option>
@@ -137,10 +135,18 @@
                   <div key={index} className="flex mb-2 gap-2">
                     <input
                       value={colaborador.nome}
-                      onChange={(e) => handleColaboradorChange(index, e.target.value)}
+                      onChange={(e) => handleColaboradorChange(index, 'nome', e.target.value)}
                       placeholder={`Colaborador ${index + 1}`}
                       className="flex-1 border p-2 rounded"
                     />
+                    <select
+                      value={colaborador.tipo}
+                      onChange={(e) => handleColaboradorChange(index, 'tipo', e.target.value)}
+                      className="border p-2 rounded w-40"
+                    >
+                      <option value="Operacional">Operacional</option>
+                      <option value="Devolução">Devolução</option>
+                    </select>
                     <button
                       onClick={() => removeColaborador(index)}
                       className="text-red-600 font-bold"
