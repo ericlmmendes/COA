@@ -1,21 +1,78 @@
-<!DOCTYPE html>
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Converter planilha em JSON para filtrar linhas em branco
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filtrar linhas em branco (linhas onde todas as células estão vazias, nulas ou indefinidas)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heurística para encontrar a linha de cabeçalho ignorando linhas com menos células preenchidas do que a próxima linha
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Converter JSON filtrado de volta para CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Crie uma nova planilha a partir de uma matriz filtrada de matrizes
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Controle Operacional por Agência</title>
+  <title>Controle Operacional por Agência - COA</title>
   <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/babel-standalone@6.26.0/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     body {
       font-family: 'Inter', sans-serif;
     }
+    .animate-pulse-red {
+      animation: pulse-red 0.5s ease-in-out 2;
+    }
+    @keyframes pulse-red {
+      0% { border-color: #ef4444; }
+      50% { border-color: transparent; }
+      100% { border-color: #ef4444; }
+    }
+    .hover-scale {
+      transition: transform 0.2s ease-in-out;
+    }
+    .hover-scale:hover {
+      transform: scale(1.02);
+    }
+    .input-error {
+      border: 2px solid #ef4444;
+    }
   </style>
 </head>
-<body>
+<body class="flex flex-col min-h-screen bg-gray-100">
   <div id="root"></div>
   <script type="text/babel">
     const App = () => {
@@ -28,18 +85,39 @@
         qtSuplentes: '',
         qtFaltas: '',
         qtAtestados: '',
+        retificacao: 'Não',
         colaboradores: [{ nome: '', tipo: 'Operacional' }],
       });
+      const [errors, setErrors] = React.useState({});
+
+      const validateForm = () => {
+        const newErrors = {};
+        if (!formData.fornecedor) newErrors.fornecedor = true;
+        if (!formData.data) newErrors.data = true;
+        if (!formData.turno) newErrors.turno = true;
+        if (!formData.qtFixos) newErrors.qtFixos = true;
+        if (!formData.qtDiaristas) newErrors.qtDiaristas = true;
+        if (!formData.qtSuplentes) newErrors.qtSuplentes = true;
+        if (!formData.qtFaltas) newErrors.qtFaltas = true;
+        if (!formData.qtAtestados) newErrors.qtAtestados = true;
+        formData.colaboradores.forEach((col, index) => {
+          if (!col.nome.trim()) newErrors[`colaborador_${index}`] = true;
+        });
+        setErrors(newErrors);
+        return Object.keys(newErrors).length === 0;
+      };
 
       const handleInputChange = (e) => {
         const { name, value } = e.target;
         setFormData({ ...formData, [name]: value });
+        setErrors({ ...errors, [name]: false });
       };
 
       const handleColaboradorChange = (index, field, value) => {
         const newColaboradores = [...formData.colaboradores];
         newColaboradores[index] = { ...newColaboradores[index], [field]: value };
         setFormData({ ...formData, colaboradores: newColaboradores });
+        setErrors({ ...errors, [`colaborador_${index}`]: false });
       };
 
       const addColaborador = () => {
@@ -52,6 +130,9 @@
       const removeColaborador = (index) => {
         const newColaboradores = formData.colaboradores.filter((_, i) => i !== index);
         setFormData({ ...formData, colaboradores: newColaboradores });
+        const newErrors = { ...errors };
+        delete newErrors[`colaborador_${index}`];
+        setErrors(newErrors);
       };
 
       const calculateFixosDiaristas = () => {
@@ -73,17 +154,27 @@
       };
 
       const generateReport = () => {
+        if (!validateForm()) {
+          return;
+        }
         const fixosDiaristas = calculateFixosDiaristas();
         const totalPresentes = calculateTotalPresentes();
-        const nomesColaboradores = formData.colaboradores
-          .filter(col => col.nome.trim() !== '') // Filtra colaboradores com nome vazio
-          .map(col => `- ${col.nome} (${col.tipo})`)
-          .join('\n');
+        const operacionais = formData.colaboradores
+          .filter(col => col.nome.trim() !== '' && col.tipo === 'Operacional')
+          .map((col, index) => `${index + 1}. ${col.nome} (Operacional)`);
+        const devolucoes = formData.colaboradores
+          .filter(col => col.nome.trim() !== '' && col.tipo === 'Devolução')
+          .map((col, index) => `${index + 1}. ${col.nome} (Devolução)`);
+        
+        const nomesColaboradores = operacionais.length > 0 || devolucoes.length > 0
+          ? `*Operacional:*\n${operacionais.length > 0 ? operacionais.join('\n') : 'Nenhum'}\n\n*Devolução:*\n${devolucoes.length > 0 ? devolucoes.join('\n') : 'Nenhum'}`
+          : 'Nenhum colaborador informado';
 
-        const report = `*Controle Operacional por Agência*\n\n` +
+        const report = `*Controle Operacional por Agência - COA*\n\n` +
           `*Fornecedor:* ${formData.fornecedor}\n` +
           `*Data:* ${formatDateToBrazilian(formData.data)}\n` +
-          `*Turno:* ${formData.turno}\n\n` +
+          `*Turno:* ${formData.turno}\n` +
+          `*Retificação:* ${formData.retificacao}\n\n` +
           `*Qt. Fixos:* ${formData.qtFixos || 0}\n` +
           `*Qt. Diaristas:* ${formData.qtDiaristas || 0}\n` +
           `*Qt. Suplentes:* ${formData.qtSuplentes || 0}\n\n` +
@@ -91,7 +182,7 @@
           `*Qt. Atestados:* ${formData.qtAtestados || 0}\n\n` +
           `*Qt. Fixos + Diaristas (após faltas e atestados):* ${fixosDiaristas}\n` +
           `*Total de Colaboradores Presentes:* ${totalPresentes}\n\n` +
-          `*Nomes dos Colaboradores:*\n${nomesColaboradores || 'Nenhum colaborador informado'}`;
+          `*Nomes dos Colaboradores:*\n${nomesColaboradores}`;
 
         const encodedReport = encodeURIComponent(report);
         const whatsappLink = `https://api.whatsapp.com/send?text=${encodedReport}`;
@@ -100,56 +191,115 @@
 
       return (
         <div className="min-h-screen bg-gray-100 flex flex-col items-center">
-          <header className="w-full bg-gradient-to-r from-indigo-600 to-indigo-800 p-6 flex justify-center">
-            <img
-              src="https://www.imile.com//images/logos/Christmas_logo_White.svg"
-              alt="Logo"
-              className="rounded-full w-24 h-24"
-            />
+          <header className="w-full bg-gradient-to-r from-blue-600 to-blue-800 p-6">
+            <div className="container mx-auto px-4 flex justify-between items-center">
+              <div>
+                <img src="https://www.imile.com/images/logos/Christmas_logo_White.svg" alt="Logo" className="h-16 w-auto hover:scale-105 transition-transform"/>
+              </div>
+              <nav className="space-x-6">
+                <a href="index.html" className="text-white hover:text-gray-200 transition"></a>
+              </nav>
+            </div>
           </header>
-          <div className="w-full max-w-lg p-6">
-            <h1 className="text-3xl font-bold text-gray-900 text-center mb-8">Controle Operacional por Agência</h1>
-            <div className="bg-white rounded-xl shadow-2xl p-8 space-y-6">
-              <select name="fornecedor" value={formData.fornecedor} onChange={handleInputChange} className="w-full border p-2 rounded">
+          <div className="w-full max-w-4xl p-4 sm:p-6">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 text-center mb-6 sm:mb-8">Controle Operacional por Agência - COA</h1>
+            <div className="bg-white rounded-xl shadow-2xl p-6 sm:p-8 space-y-6 hover-scale">
+              <h2 className="text-lg sm:text-xl font-semibold mb-2">Informação do Fornecedor e Turno:</h2>
+              <select
+                name="fornecedor"
+                value={formData.fornecedor}
+                onChange={handleInputChange}
+                className={`w-full border p-2 rounded ${errors.fornecedor ? 'input-error animate-pulse-red' : ''}`}
+              >
                 <option value="Enfok">Enfok</option>
                 <option value="D0">D0</option>
-                <option value="ZAZ">ZAZ</option>
                 <option value="Polly">Polly</option>
                 <option value="Blitz">Blitz</option>
               </select>
-              <input type="date" name="data" value={formData.data} onChange={handleInputChange} className="w-full border p-2 rounded"/>
-              <select name="turno" value={formData.turno} onChange={handleInputChange} className="w-full border p-2 rounded">
+              <input
+                type="date"
+                name="data"
+                value={formData.data}
+                onChange={handleInputChange}
+                className={`w-full border p-2 rounded ${errors.data ? 'input-error animate-pulse-red' : ''}`}
+              />
+              <select
+                name="turno"
+                value={formData.turno}
+                onChange={handleInputChange}
+                className={`w-full border p-2 rounded ${errors.turno ? 'input-error animate-pulse-red' : ''}`}
+              >
                 <option value="T1">T1</option>
                 <option value="T2">T2</option>
                 <option value="T3">T3</option>
               </select>
-              <input name="qtFixos" value={formData.qtFixos} onChange={handleInputChange} placeholder="Qt. Fixos do quadro do turno" className="w-full border p-2 rounded" />
-              <input name="qtDiaristas" value={formData.qtDiaristas} onChange={handleInputChange} placeholder="Qt. Diaristas" className="w-full border p-2 rounded" />
-              <input name="qtSuplentes" value={formData.qtSuplentes} onChange={handleInputChange} placeholder="Qt. Suplentes que substitui Fixos com Falta/Atestado" className="w-full border p-2 rounded" />
-              <input name="qtFaltas" value={formData.qtFaltas} onChange={handleInputChange} placeholder="Qt. Faltas Fixos" className="w-full border p-2 rounded" />
-              <input name="qtAtestados" value={formData.qtAtestados} onChange={handleInputChange} placeholder="Qt. Atestados Fixos" className="w-full border p-2 rounded" />
-
+              <select
+                name="retificacao"
+                value={formData.retificacao}
+                onChange={handleInputChange}
+                className="w-full border p-2 rounded"
+              >
+                <option value="Não"></option>
+                <option value="Sim">Retificação</option>
+              </select>
+              <h2 className="text-lg sm:text-xl font-semibold mb-2">Quantidades Fixos, Diaristas e Suplentes:</h2>
+              <input
+                name="qtFixos"
+                value={formData.qtFixos}
+                onChange={handleInputChange}
+                placeholder="Qt. Fixos do quadro do turno"
+                className={`w-full border p-2 rounded ${errors.qtFixos ? 'input-error animate-pulse-red' : ''}`}
+              />
+              <input
+                name="qtDiaristas"
+                value={formData.qtDiaristas}
+                onChange={handleInputChange}
+                placeholder="Qt. Diaristas"
+                className={`w-full border p-2 rounded ${errors.qtDiaristas ? 'input-error animate-pulse-red' : ''}`}
+              />
+              <input
+                name="qtSuplentes"
+                value={formData.qtSuplentes}
+                onChange={handleInputChange}
+                placeholder="Qt. Suplentes que substitui Fixos com Falta/Atestado"
+                className={`w-full border p-2 rounded ${errors.qtSuplentes ? 'input-error animate-pulse-red' : ''}`}
+              />
+              <h2 className="text-lg sm:text-xl font-semibold mb-2">Quantidades Faltas e Atestados, Colaboradores Fixos:</h2>
+              <input
+                name="qtFaltas"
+                value={formData.qtFaltas}
+                onChange={handleInputChange}
+                placeholder="Qt. Faltas Fixos"
+                className={`w-full border p-2 rounded ${errors.qtFaltas ? 'input-error animate-pulse-red' : ''}`}
+              />
+              <input
+                name="qtAtestados"
+                value={formData.qtAtestados}
+                onChange={handleInputChange}
+                placeholder="Qt. Atestados Fixos"
+                className={`w-full border p-2 rounded ${errors.qtAtestados ? 'input-error animate-pulse-red' : ''}`}
+              />
               <div>
-                <h2 className="text-xl font-semibold mb-2">Colaboradores</h2>
+                <h2 className="text-lg sm:text-xl font-semibold mb-2">Nome dos Colaboradores Fixos:</h2>
                 {formData.colaboradores.map((colaborador, index) => (
-                  <div key={index} className="flex mb-2 gap-2">
+                  <div key={index} className="flex flex-col sm:flex-row mb-2 gap-2">
                     <input
                       value={colaborador.nome}
                       onChange={(e) => handleColaboradorChange(index, 'nome', e.target.value)}
                       placeholder={`Colaborador ${index + 1}`}
-                      className="flex-1 border p-2 rounded"
+                      className={`flex-1 border p-2 rounded ${errors[`colaborador_${index}`] ? 'input-error animate-pulse-red' : ''}`}
                     />
                     <select
                       value={colaborador.tipo}
                       onChange={(e) => handleColaboradorChange(index, 'tipo', e.target.value)}
-                      className="border p-2 rounded w-40"
+                      className="border p-2 rounded w-full sm:w-40"
                     >
                       <option value="Operacional">Operacional</option>
                       <option value="Devolução">Devolução</option>
                     </select>
                     <button
                       onClick={() => removeColaborador(index)}
-                      className="text-red-600 font-bold"
+                      className="text-red-600 font-bold hover:text-red-800 transition-colors"
                     >
                       X
                     </button>
@@ -157,7 +307,7 @@
                 ))}
                 <button
                   onClick={addColaborador}
-                  className="mt-2 text-sm text-indigo-600 hover:underline"
+                  className="mt-2 text-sm text-blue-600 hover:underline hover:text-blue-800 transition-colors"
                 >
                   + Adicionar colaborador
                 </button>
@@ -165,7 +315,7 @@
             </div>
             <button
               onClick={generateReport}
-              className="mt-8 w-full bg-indigo-600 text-white py-4 px-6 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-300 text-lg font-semibold transition-all duration-200"
+              className="mt-6 sm:mt-8 w-full bg-lime-500 text-white py-3 sm:py-4 px-6 rounded-lg hover:bg-lime-600 focus:outline-none focus:ring-4 focus:ring-lime-300 text-base sm:text-lg font-semibold transition-all duration-200 hover-scale"
             >
               Enviar Relatório para WhatsApp
             </button>
@@ -176,8 +326,24 @@
 
     ReactDOM.render(<App />, document.getElementById('root'));
   </script>
+  <a href="https://wa.me/5511930089968?text=Ol%C3%A1%2C%20gostaria%20de%20saber%20mais%20sobre%20o%20COA%20-%20Controle%20Operacional%20por%20Ag%C3%AAncia"
+     class="fixed bottom-20 right-6 bg-green-500 text-white rounded-full w-14 h-14 flex items-center justify-center shadow-lg hover:bg-green-600 transition-transform transform hover:scale-110 z-50"
+     target="_blank" rel="noopener noreferrer">
+    <i class="fab fa-whatsapp text-2xl"></i>
+  </a>
+  <footer class="bg-gray-800 text-white py-6">
+    <div class="container mx-auto px-4">
+      <div class="flex flex-col md:flex-row justify-between items-center">
+        <div class="mb-4 md:mb-0">
+          <p>© 2025 ERICLM. Todos os direitos reservados.</p>
+        </div>
+        <div class="flex space-x-6">
+          <a href="sobre.html" class="hover:text-gray-300 transition">Sobre</a>
+          <a href="privacidade.html" class="hover:text-gray-300 transition">Política de Privacidade</a>
+          <a href="termos.html" class="hover:text-gray-300 transition">Termos de Uso</a>
+        </div>
+      </div>
+    </div>
+  </footer>
 </body>
-<footer class="footer text-center text-gray-600 mt-8 mb-4">
-  © 2025 ERICLM. Todos os direitos reservados.
-</footer>
 </html>
