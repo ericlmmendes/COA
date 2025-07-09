@@ -1,0 +1,110 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Converter planilha em JSON para filtrar linhas em branco
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filtrar linhas em branco (linhas onde todas as células estão vazias, nulas ou indefinidas)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heurística para encontrar a linha de cabeçalho ignorando linhas com menos células preenchidas do que a próxima linha
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Converter JSON filtrado de volta para CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Cria uma nova planilha a partir de uma matriz filtrada de matrizes
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sobre - Controle Operacional por Agência - COA</title>
+  <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/babel-standalone@6.26.0/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    .hover-scale {
+      transition: transform 0.2s ease-in-out;
+    }
+    .hover-scale:hover {
+      transform: scale(1.02);
+    }
+  </style>
+</head>
+<body class="flex flex-col min-h-screen bg-gray-100">
+  <header class="w-full bg-gradient-to-r from-blue-600 to-blue-800 p-6">
+    <div class="container mx-auto px-4 flex justify-between items-center">
+      <div>
+        <img src="https://www.imile.com/images/logos/Christmas_logo_White.svg" alt="Logo" class="h-16 w-auto hover:scale-105 transition-transform"/>
+      </div>
+      <nav class="space-x-6">
+        <a href="index.html" class="text-white hover:text-gray-200 transition">Home</a>
+      </nav>
+    </div>
+  </header>
+  <main class="container mx-auto px-4 py-8 flex-grow flex flex-col items-center">
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 text-center mb-6 sm:mb-8">Sobre o Controle Operacional por Agência - COA</h1>
+    <div class="bg-white rounded-xl shadow-2xl p-6 sm:p-8 max-w-4xl w-full hover-scale">
+      <p class="text-gray-700 mb-4">
+        O <strong>Controle Operacional por Agência (COA)</strong> é uma aplicação web desenvolvida para otimizar a gestão de colaboradores em operações logísticas. Com uma interface intuitiva, a ferramenta permite registrar informações sobre fornecedores, turnos, quantidades de colaboradores fixos, diaristas, suplentes, faltas e atestados, além de gerar relatórios detalhados enviados diretamente pelo WhatsApp.
+      </p>
+      <p class="text-gray-700 mb-4">
+        Nosso objetivo é fornecer uma solução prática e eficiente para empresas que necessitam de controle rigoroso sobre suas equipes operacionais, garantindo precisão e agilidade no registro e compartilhamento de dados.
+      </p>
+      <p class="text-gray-700">
+        Desenvolvido pela ERICLM, o COA reflete nosso compromisso com a inovação e a excelência em soluções tecnológicas para o setor logístico.
+      </p>
+    </div>
+  </main>
+  <a href="https://wa.me/5511930089968?text=Ol%C3%A1%2C%20gostaria%20de%20saber%20mais%20sobre%20o%20COA%20-%20Controle%20Operacional%20por%20Ag%C3%AAncia"
+     class="fixed bottom-20 right-6 bg-green-500 text-white rounded-full w-14 h-14 flex items-center justify-center shadow-lg hover:bg-green-600 transition-transform transform hover:scale-110 z-50"
+     target="_blank" rel="noopener noreferrer">
+    <i class="fab fa-whatsapp text-2xl"></i>
+  </a>
+  <footer class="bg-gray-800 text-white py-6">
+    <div class="container mx-auto px-4">
+      <div class="flex flex-col md:flex-row justify-between items-center">
+        <div class="mb-4 md:mb-0">
+          <p>© 2025 ERICLM. Todos os direitos reservados.</p>
+        </div>
+        <div class="flex space-x-6">
+          <a href="index.html" class="hover:text-gray-300 transition"></a>
+          <a href="sobre.html" class="hover:text-gray-300 transition">Sobre</a>
+          <a href="privacidade.html" class="hover:text-gray-300 transition">Política de Privacidade</a>
+          <a href="termos.html" class="hover:text-gray-300 transition">Termos de Uso</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>
