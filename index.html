@@ -1,43 +1,4 @@
-<script type="text/javascript">
-        var gk_isXlsx = false;
-        var gk_xlsxFileLookup = {};
-        var gk_fileData = {};
-        function filledCell(cell) {
-          return cell !== '' && cell != null;
-        }
-        function loadFileData(filename) {
-        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
-            try {
-                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
-                var firstSheetName = workbook.SheetNames[0];
-                var worksheet = workbook.Sheets[firstSheetName];
-
-                // Converter planilha em JSON para filtrar linhas em branco
-                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
-                // Filtrar linhas em branco (linhas onde todas as células estão vazias, nulas ou indefinidas)
-                var filteredData = jsonData.filter(row => row.some(filledCell));
-
-                // Heurística para encontrar a linha de cabeçalho ignorando linhas com menos células preenchidas do que a próxima linha
-                var headerRowIndex = filteredData.findIndex((row, index) =>
-                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
-                );
-                // Fallback
-                if (headerRowIndex === -1 || headerRowIndex > 25) {
-                  headerRowIndex = 0;
-                }
-
-                // Converter JSON filtrado de volta para CSV
-                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Crie uma nova planilha a partir de uma matriz filtrada de matrizes
-                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
-                return csv;
-            } catch (e) {
-                console.error(e);
-                return "";
-            }
-        }
-        return gk_fileData[filename] || "";
-        }
-        </script><!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
@@ -70,10 +31,64 @@
     .input-error {
       border: 2px solid #ef4444;
     }
+    .modal {
+      background: rgba(0, 0, 0, 0.5);
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+    .modal-content {
+      background: white;
+      padding: 1.5rem;
+      border-radius: 0.5rem;
+      width: 100%;
+      max-width: 600px;
+      max-height: 80vh;
+      overflow-y: auto;
+      position: relative;
+    }
   </style>
 </head>
 <body class="flex flex-col min-h-screen bg-gray-100">
   <div id="root"></div>
+  <script type="text/javascript">
+    var gk_isXlsx = false;
+    var gk_xlsxFileLookup = {};
+    var gk_fileData = {};
+    function filledCell(cell) {
+      return cell !== '' && cell != null;
+    }
+    function loadFileData(filename) {
+      if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+        try {
+          var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+          var firstSheetName = workbook.SheetNames[0];
+          var worksheet = workbook.Sheets[firstSheetName];
+          var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+          var filteredData = jsonData.filter(row => row.some(filledCell));
+          var headerRowIndex = filteredData.findIndex((row, index) =>
+            row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+          );
+          if (headerRowIndex === -1 || headerRowIndex > 25) {
+            headerRowIndex = 0;
+          }
+          var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex));
+          csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+          return csv;
+        } catch (e) {
+          console.error(e);
+          return "";
+        }
+      }
+      return gk_fileData[filename] || "";
+    }
+  </script>
   <script type="text/babel">
     const App = () => {
       const [formData, setFormData] = React.useState({
@@ -89,6 +104,12 @@
         colaboradores: [{ nome: '', tipo: 'Operacional' }],
       });
       const [errors, setErrors] = React.useState({});
+      const [modalOpen, setModalOpen] = React.useState(false);
+      const [absenceForm, setAbsenceForm] = React.useState({
+        fornecedor: 'Enfok',
+        colaboradores: [{ nomeColaborador: '', tipoColaborador: 'Fixo', motivo: '' }],
+      });
+      const [absenceErrors, setAbsenceErrors] = React.useState({});
 
       const validateForm = () => {
         const newErrors = {};
@@ -107,17 +128,29 @@
         return Object.keys(newErrors).length === 0;
       };
 
+      const validateAbsenceForm = () => {
+        const newErrors = {};
+        if (!absenceForm.fornecedor) newErrors.fornecedor = true;
+        absenceForm.colaboradores.forEach((col, index) => {
+          if (!col.nomeColaborador.trim()) newErrors[`nomeColaborador_${index}`] = true;
+          if (!col.tipoColaborador) newErrors[`tipoColaborador_${index}`] = true;
+          if (!col.motivo.trim()) newErrors[`motivo_${index}`] = true;
+        });
+        setAbsenceErrors(newErrors);
+        return Object.keys(newErrors).length === 0;
+      };
+
       const handleInputChange = (e) => {
         const { name, value } = e.target;
         setFormData({ ...formData, [name]: value });
         setErrors({ ...errors, [name]: false });
       };
 
-      const handleColaboradorChange = (index, field, value) => {
-        const newColaboradores = [...formData.colaboradores];
+      const handleAbsenceColaboradorChange = (index, field, value) => {
+        const newColaboradores = [...absenceForm.colaboradores];
         newColaboradores[index] = { ...newColaboradores[index], [field]: value };
-        setFormData({ ...formData, colaboradores: newColaboradores });
-        setErrors({ ...errors, [`colaborador_${index}`]: false });
+        setAbsenceForm({ ...absenceForm, colaboradores: newColaboradores });
+        setAbsenceErrors({ ...absenceErrors, [`${field}_${index}`]: false });
       };
 
       const addColaborador = () => {
@@ -127,12 +160,29 @@
         });
       };
 
+      const addAbsenceColaborador = () => {
+        setAbsenceForm({
+          ...absenceForm,
+          colaboradores: [...absenceForm.colaboradores, { nomeColaborador: '', tipoColaborador: 'Fixo', motivo: '' }],
+        });
+      };
+
       const removeColaborador = (index) => {
         const newColaboradores = formData.colaboradores.filter((_, i) => i !== index);
         setFormData({ ...formData, colaboradores: newColaboradores });
         const newErrors = { ...errors };
         delete newErrors[`colaborador_${index}`];
         setErrors(newErrors);
+      };
+
+      const removeAbsenceColaborador = (index) => {
+        const newColaboradores = absenceForm.colaboradores.filter((_, i) => i !== index);
+        setAbsenceForm({ ...absenceForm, colaboradores: newColaboradores });
+        const newErrors = { ...absenceErrors };
+        delete newErrors[`nomeColaborador_${index}`];
+        delete newErrors[`tipoColaborador_${index}`];
+        delete newErrors[`motivo_${index}`];
+        setAbsenceErrors(newErrors);
       };
 
       const calculateFixosDiaristas = () => {
@@ -153,24 +203,21 @@
         return `${day}/${month}/${year}`;
       };
 
-      const generateReport = () => {
+      const generateReport = (greeting = 'Bom dia!') => {
         if (!validateForm()) {
           return;
         }
         const fixosDiaristas = calculateFixosDiaristas();
         const totalPresentes = calculateTotalPresentes();
         const operacionais = formData.colaboradores
-          .filter(col => col.nome.trim() !== '' && col.tipo === 'Operacional')
+          .filter(col => col.nome.trim() !== '')
           .map((col, index) => `${index + 1}. ${col.nome} (Operacional)`);
-        const devolucoes = formData.colaboradores
-          .filter(col => col.nome.trim() !== '' && col.tipo === 'Devolução')
-          .map((col, index) => `${index + 1}. ${col.nome} (Devolução)`);
         
-        const nomesColaboradores = operacionais.length > 0 || devolucoes.length > 0
-          ? `*Operacional:*\n${operacionais.length > 0 ? operacionais.join('\n') : 'Nenhum'}\n\n*Devolução:*\n${devolucoes.length > 0 ? devolucoes.join('\n') : 'Nenhum'}`
+        const nomesColaboradores = operacionais.length > 0
+          ? `*Operacional:*\n${operacionais.join('\n')}`
           : 'Nenhum colaborador informado';
 
-        const report = `*Controle Operacional por Agência - COA*\n\n` +
+        const report = `${greeting}\n*Controle Operacional por Agência - COA*\n\n` +
           `*Fornecedor:* ${formData.fornecedor}\n` +
           `*Data:* ${formatDateToBrazilian(formData.data)}\n` +
           `*Turno:* ${formData.turno}\n` +
@@ -187,6 +234,39 @@
         const encodedReport = encodeURIComponent(report);
         const whatsappLink = `https://api.whatsapp.com/send?text=${encodedReport}`;
         window.open(whatsappLink, '_blank');
+      };
+
+      const openAbsenceForm = () => {
+        setModalOpen(true);
+      };
+
+      const closeAbsenceForm = () => {
+        setModalOpen(false);
+        setAbsenceForm({
+          fornecedor: 'Enfok',
+          colaboradores: [{ nomeColaborador: '', tipoColaborador: 'Fixo', motivo: '' }],
+        });
+        setAbsenceErrors({});
+      };
+
+      const submitAbsenceForm = (e) => {
+        e.preventDefault();
+        if (!validateAbsenceForm()) {
+          return;
+        }
+        const colaboradoresReport = absenceForm.colaboradores
+          .filter(col => col.nomeColaborador.trim() !== '')
+          .map((col, index) => `${index + 1}. ${col.nomeColaborador} (${col.tipoColaborador}) \nMotivo: ${col.motivo}`)
+          .join('\n');
+        
+        const report = `*Relatório, Ausência de Colaboradores*\n\n` +
+          `*Fornecedor:* ${absenceForm.fornecedor}\n` +
+          `*Colaboradores Ausentes:*\n${colaboradoresReport || 'Nenhum colaborador informado'}`;
+
+        const encodedReport = encodeURIComponent(report);
+        const whatsappLink = `https://api.whatsapp.com/send?text=${encodedReport}`;
+        window.open(whatsappLink, '_blank');
+        closeAbsenceForm();
       };
 
       return (
@@ -247,7 +327,7 @@
                 name="qtFixos"
                 value={formData.qtFixos}
                 onChange={handleInputChange}
-                placeholder="Qt. Fixos do quadro do turno"
+                placeholder="Qt. Fixos"
                 className={`w-full border p-2 rounded ${errors.qtFixos ? 'input-error animate-pulse-red' : ''}`}
               />
               <input
@@ -261,7 +341,7 @@
                 name="qtSuplentes"
                 value={formData.qtSuplentes}
                 onChange={handleInputChange}
-                placeholder="Qt. Suplentes que substitui Fixos com Falta/Atestado"
+                placeholder="Qt. Suplentes que substitui Fixos"
                 className={`w-full border p-2 rounded ${errors.qtSuplentes ? 'input-error animate-pulse-red' : ''}`}
               />
               <h2 className="text-lg sm:text-xl font-semibold mb-2">Quantidades Faltas e Atestados, Colaboradores Fixos:</h2>
@@ -285,19 +365,21 @@
                   <div key={index} className="flex flex-col sm:flex-row mb-2 gap-2">
                     <input
                       value={colaborador.nome}
-                      onChange={(e) => handleColaboradorChange(index, 'nome', e.target.value)}
+                      onChange={(e) => {
+                        const newColaboradores = [...formData.colaboradores];
+                        newColaboradores[index] = { ...newColaboradores[index], nome: e.target.value };
+                        setFormData({ ...formData, colaboradores: newColaboradores });
+                        setErrors({ ...errors, [`colaborador_${index}`]: false });
+                      }}
                       placeholder={`Colaborador ${index + 1}`}
                       className={`flex-1 border p-2 rounded ${errors[`colaborador_${index}`] ? 'input-error animate-pulse-red' : ''}`}
                     />
-                    <select
-                      value={colaborador.tipo}
-                      onChange={(e) => handleColaboradorChange(index, 'tipo', e.target.value)}
-                      className="border p-2 rounded w-full sm:w-40"
-                    >
-                      <option value="Operacional">Operacional</option>
-                      <option value="Devolução">Devolução</option>
-                    </select>
+                    <input
+                      type="hidden"
+                      value="Operacional"
+                    />
                     <button
+                      type="button"
                       onClick={() => removeColaborador(index)}
                       className="text-red-600 font-bold hover:text-red-800 transition-colors"
                     >
@@ -306,6 +388,7 @@
                   </div>
                 ))}
                 <button
+                  type="button"
                   onClick={addColaborador}
                   className="mt-2 text-sm text-blue-600 hover:underline hover:text-blue-800 transition-colors"
                 >
@@ -314,23 +397,131 @@
               </div>
             </div>
             <button
-              onClick={generateReport}
-              className="mt-6 sm:mt-8 w-full bg-lime-500 text-white py-3 sm:py-4 px-6 rounded-lg hover:bg-lime-600 focus:outline-none focus:ring-4 focus:ring-lime-300 text-base sm:text-lg font-semibold transition-all duration-200 hover-scale"
+              type="button"
+              onClick={() => {
+                const hour = new Date().getHours();
+                let greeting = 'Bom dia!';
+                if (hour >= 12 && hour < 18) greeting = 'Boa tarde!';
+                else if (hour >= 18) greeting = 'Boa noite!';
+                generateReport(greeting);
+              }}
+              className="mt-6 sm:mt-8 w-full bg-green-500 text-white py-3 sm:py-4 px-6 rounded-lg hover:bg-lime-600 focus:outline-none focus:ring-4 focus:ring-lime-300 text-base sm:text-lg font-semibold transition-all duration-200 hover-scale"
             >
-              Enviar Relatório para WhatsApp
+              Enviar Relatório
             </button>
+            <div className="fixed bottom-36 right-6 z-50">
+              <button
+                type="button"
+                onClick={openAbsenceForm}
+                className="bg-green-500 text-white rounded-full w-14 h-14 flex items-center justify-center shadow-lg hover:bg-green-600 transition-transform transform hover:scale-110"
+                title="Relatório de Ausência de Colaboradores"
+              >
+                <i className="fas fa-file-alt text-2xl"></i>
+              </button>
+            </div>
+            <a
+              href="https://wa.me/5511930089968?text=Ol%C3%A1%2C%20gostaria%20de%20saber%20mais%20sobre%20o%20COA%20-%20Controle%20Operacional%20por%20Ag%C3%AAncia"
+              className="fixed bottom-20 right-6 bg-green-500 text-white rounded-full w-14 h-14 flex items-center justify-center shadow-lg hover:bg-green-600 transition-transform transform hover:scale-110 z-50"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <i className="fab fa-whatsapp text-2xl"></i>
+            </a>
           </div>
+          {modalOpen && (
+            <div className="modal">
+              <div className="modal-content">
+                <button
+                  type="button"
+                  onClick={closeAbsenceForm}
+                  className="absolute top-2 right-2 text-gray-600 hover:text-gray-800"
+                >
+                  <i className="fas fa-times"></i>
+                </button>
+                <div className="flex justify-center mb-4">
+                  <img src="https://www.imile.com/images/logos/Christmas_logo_Blue.svg" alt="Logo" className="h-12 w-auto"/>
+                </div>
+                <h2 className="text-xl font-semibold mb-4 text-center">Relatório, Ausência de Colaboradores</h2>
+                <form onSubmit={submitAbsenceForm} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Fornecedor</label>
+                    <select
+                      name="fornecedor"
+                      value={absenceForm.fornecedor}
+                      onChange={(e) => setAbsenceForm({ ...absenceForm, fornecedor: e.target.value })}
+                      className={`w-full border p-2 rounded ${absenceErrors.fornecedor ? 'input-error animate-pulse-red' : ''}`}
+                    >
+                      <option value="Enfok">Enfok</option>
+                      <option value="D0">D0</option>
+                      <option value="Polly">Polly</option>
+                      <option value="Blitz">Blitz</option>
+                    </select>
+                  </div>
+                  {absenceForm.colaboradores.map((colaborador, index) => (
+                    <div key={index} className="flex flex-col sm:flex-row mb-2 gap-2 items-center">
+                      <div className="flex-1">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Nome do Colaborador {index + 1}</label>
+                        <input
+                          value={colaborador.nomeColaborador}
+                          onChange={(e) => handleAbsenceColaboradorChange(index, 'nomeColaborador', e.target.value)}
+                          placeholder={`Nome do Colaborador ${index + 1}`}
+                          className={`w-full border p-2 rounded ${absenceErrors[`nomeColaborador_${index}`] ? 'input-error animate-pulse-red' : ''}`}
+                        />
+                      </div>
+                      <div className="w-full sm:w-32">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
+                        <select
+                          value={colaborador.tipoColaborador}
+                          onChange={(e) => handleAbsenceColaboradorChange(index, 'tipoColaborador', e.target.value)}
+                          className={`w-full border p-2 rounded ${absenceErrors[`tipoColaborador_${index}`] ? 'input-error animate-pulse-red' : ''}`}
+                        >
+                          <option value="Fixo">Fixo</option>
+                          <option value="Diarista">Diarista</option>
+                        </select>
+                      </div>
+                      <div className="flex-1">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Motivo da Ausência</label>
+                        <input
+                          value={colaborador.motivo}
+                          onChange={(e) => handleAbsenceColaboradorChange(index, 'motivo', e.target.value)}
+                          placeholder="Motivo da Ausência"
+                          className={`w-full border p-2 rounded ${absenceErrors[`motivo_${index}`] ? 'input-error animate-pulse-red' : ''}`}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeAbsenceColaborador(index)}
+                        className="text-red-600 font-bold hover:text-red-800 transition-colors mt-6 sm:mt-0"
+                      >
+                        X
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={addAbsenceColaborador}
+                    className="mt-2 text-sm text-blue-600 hover:underline hover:text-blue-800 transition-colors"
+                  >
+                    + Adicionar colaborador e motivo da Ausência
+                  </button>
+                  <div className="sticky bottom-0 bg-white pt-4">
+                    <button
+                      type="submit"
+                      className="w-full bg-green-500 text-white py-2 rounded-lg hover:bg-green-600 transition-all"
+                    >
+                      Enviar Relatório
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </div>
       );
     };
 
     ReactDOM.render(<App />, document.getElementById('root'));
   </script>
-  <a href="https://wa.me/5511930089968?text=Ol%C3%A1%2C%20gostaria%20de%20saber%20mais%20sobre%20o%20COA%20-%20Controle%20Operacional%20por%20Ag%C3%AAncia"
-     class="fixed bottom-20 right-6 bg-green-500 text-white rounded-full w-14 h-14 flex items-center justify-center shadow-lg hover:bg-green-600 transition-transform transform hover:scale-110 z-50"
-     target="_blank" rel="noopener noreferrer">
-    <i class="fab fa-whatsapp text-2xl"></i>
-  </a>
   <footer class="bg-gray-800 text-white py-6">
     <div class="container mx-auto px-4">
       <div class="flex flex-col md:flex-row justify-between items-center">
